@@ -1,0 +1,6 @@
+{
+  "name": "Parsewise - Operator Precedence Parser Laboratory",
+  "description": "Interactive compiler design workstation for grammar verification, leading/trailing boundary sets, operator precedence matrix derivation, and shift-reduce parsing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
