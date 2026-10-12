@@ -3,17 +3,23 @@ import { StepId } from '../types';
 
 interface FooterProps {
   currentStep: StepId;
+  tool?: 'opp' | 're';
+  reStepLabel?: string;
   onOpenHelp: () => void;
   onOpenShortcuts: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   currentStep,
+  tool = 'opp',
+  reStepLabel,
   onOpenHelp,
   onOpenShortcuts,
 }) => {
   const stepLabel =
-    currentStep === 'grammar'
+    tool === 're' && reStepLabel
+      ? reStepLabel
+      : currentStep === 'grammar'
       ? 'Step 1 of 4 · Axiom Verification'
       : currentStep === 'sets'
       ? 'Step 2 of 4 · Inductive Boundary Sets'
@@ -51,7 +57,31 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
         </div>
 
-        {/* Column 2: Relation Legend */}
+        {tool === 're' ? (
+          <div className="flex flex-col gap-2">
+            <h4 className="font-mono text-xs uppercase tracking-wider text-white/70 font-semibold">
+              Position Function Legend
+            </h4>
+            <div className="grid grid-cols-2 gap-2 font-mono text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-[#6A93F0]">{'{ }'}</span>
+                <span className="text-[#8F94A6]">firstpos</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-[#F27F5E]">{'{ }'}</span>
+                <span className="text-[#8F94A6]">lastpos</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-[#AE82EE]">◌</span>
+                <span className="text-[#8F94A6]">nullable</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-[#F2A93B]">◎</span>
+                <span className="text-[#8F94A6]">accepting state</span>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="flex flex-col gap-2">
           <h4 className="font-mono text-xs uppercase tracking-wider text-white/70 font-semibold">
             Relation Legend
@@ -75,6 +105,7 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* Column 3: Shortcuts */}
         <div className="flex flex-col gap-2">
@@ -101,7 +132,7 @@ export const Footer: React.FC<FooterProps> = ({
               </kbd>
             </div>
             <div className="flex items-center justify-between">
-              <span>Reset parser</span>
+              <span>{tool === 're' ? 'Reset stepper' : 'Reset parser'}</span>
               <kbd className="bg-[#1F2333] text-white px-2 py-0.5 rounded text-[11px] border border-[#2E354B]">
                 R
               </kbd>

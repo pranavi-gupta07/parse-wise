@@ -7,6 +7,7 @@ interface StepperNavProps {
   isGrammarValid: boolean;
   hasConflicts: boolean;
   conflictsCount: number;
+  rightSlot?: React.ReactNode;
 }
 
 export const StepperNav: React.FC<StepperNavProps> = ({
@@ -15,10 +16,11 @@ export const StepperNav: React.FC<StepperNavProps> = ({
   isGrammarValid,
   hasConflicts,
   conflictsCount,
+  rightSlot,
 }) => {
   return (
     <div className="sticky top-[60px] z-40 bg-[#F6F2EA]/95 backdrop-blur border-b border-[#E3DCCD] shadow-[0_1px_3px_rgba(20,22,31,0.04)]">
-      <div className="w-full px-4 md:px-8 py-2.5 flex items-center justify-between">
+      <div className="w-full px-4 md:px-8 py-2.5 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 md:gap-4 flex-wrap max-w-4xl w-full">
           {/* Step 1 */}
           <button
@@ -168,6 +170,7 @@ export const StepperNav: React.FC<StepperNavProps> = ({
             )}
           </button>
         </div>
+        {rightSlot}
       </div>
     </div>
   );
