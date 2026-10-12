@@ -4,13 +4,16 @@ import { StepPlayer } from './useStepPlayer';
 interface PlaybackBarProps {
   player: StepPlayer;
   unitLabel?: string; // e.g. "node", "rule", "transition"
+  /** one-line description of the current step, always visible in the dock */
+  narration?: React.ReactNode;
 }
 
-export const PlaybackBar: React.FC<PlaybackBarProps> = ({ player, unitLabel = 'step' }) => {
+export const PlaybackBar: React.FC<PlaybackBarProps> = ({ player, unitLabel = 'step', narration }) => {
   const { viewMode, index, total, isPlaying, speed } = player;
 
   return (
-    <div className="w-full bg-gray-100 p-3 rounded-xl border border-[#DDD6C5] shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+    <div className="sticky top-[106px] z-30 w-full bg-gray-100/95 backdrop-blur rounded-xl border border-[#DDD6C5] shadow-sm flex flex-col">
+    <div className="w-full px-3 py-2 flex flex-col lg:flex-row lg:items-center justify-between gap-2">
       <div className="flex items-center flex-wrap gap-2">
         <div className="flex items-center bg-white rounded-lg p-0.5 border border-gray-200 text-xs shadow-2xs">
           <button
@@ -108,6 +111,13 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({ player, unitLabel = 's
           <kbd className="px-1 py-0.5 rounded bg-white border border-[#DDD6C5] text-gray-700 text-[10px]">R</kbd>
         </div>
       </div>
+    </div>
+    {narration && (
+      <div className="px-3 py-2 border-t border-[#DDD6C5] bg-white/80 rounded-b-xl flex items-start gap-2 font-mono text-xs text-gray-800 min-h-[34px]">
+        <span className="w-2 h-2 rounded-full bg-[#F2A93B] mt-1 shrink-0 animate-pulse"></span>
+        <div className="leading-relaxed">{narration}</div>
+      </div>
+    )}
     </div>
   );
 };

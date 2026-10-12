@@ -97,11 +97,12 @@ export const DfaGraphSvg: React.FC<DfaGraphSvgProps> = ({
   const visible = new Set(states.map((s) => s.name));
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full h-full flex items-center justify-center">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        style={{ width: '100%', maxWidth: width, minWidth: Math.round(width * 0.72), height: 'auto' }}
-        className="mx-auto block font-mono"
+        preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', height: '100%', maxWidth: width * 1.2, maxHeight: height * 1.2 }}
+        className="block font-mono"
       >
         <defs>
           <marker id="dfa-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">

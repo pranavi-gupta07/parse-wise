@@ -15,6 +15,12 @@ interface SyntaxTreeSvgProps {
   /** dim nodes that are not emphasised */
   dimOthers?: boolean;
   onSelectNode?: (id: number) => void;
+  /** only nodes with id <= builtUpTo exist yet (dynamic construction); default = all */
+  builtUpTo?: number;
+  /** ids of subtree roots currently on the build stack (shown with a stack badge) */
+  stackIds?: number[];
+  /** hide firstpos/lastpos text (compact mode) */
+  compact?: boolean;
 }
 
 interface Placed {
@@ -24,9 +30,9 @@ interface Placed {
 }
 
 const R = 17;
-const LEVEL_H = 80;
+const LEVEL_H = 64;
 const PAD_X = 70;
-const PAD_TOP = 40;
+const PAD_TOP = 36;
 
 export const SyntaxTreeSvg: React.FC<SyntaxTreeSvgProps> = ({
   root,
@@ -37,7 +43,11 @@ export const SyntaxTreeSvg: React.FC<SyntaxTreeSvgProps> = ({
   highlightPositions = [],
   dimOthers = false,
   onSelectNode,
+  builtUpTo,
+  stackIds = [],
+  compact = false,
 }) => {
+  const built = builtUpTo ?? Number.MAX_SAFE_INTEGER;
   const layout = useMemo(() => {
     const maxLen = Math.max(...nodes.map((n) => Math.max(fmtSet(n.firstpos).length, fmtSet(n.lastpos).length)));
     const spacing = Math.min(200, Math.max(96, 48 + maxLen * 8));
@@ -69,16 +79,18 @@ export const SyntaxTreeSvg: React.FC<SyntaxTreeSvgProps> = ({
   const { placed, width, height } = layout;
   const edges: { from: Placed; to: Placed }[] = [];
   Object.values(placed).forEach((p) => {
+    if (p.node.id > built) return;
     if (p.node.left) edges.push({ from: p, to: placed[p.node.left.id] });
     if (p.node.right) edges.push({ from: p, to: placed[p.node.right.id] });
   });
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full h-full flex items-center justify-center">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        style={{ width: '100%', maxWidth: width, minWidth: Math.round(width * 0.8), height: 'auto' }}
-        className="mx-auto block font-mono"
+        preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', height: '100%', maxWidth: width * 1.25, maxHeight: height * 1.25 }}
+        className="block font-mono"
       >
         {edges.map((e, i) => {
           const dim = dimOthers && !emphasizeIds.includes(e.from.node.id) && !emphasizeIds.includes(e.to.node.id);
@@ -96,6 +108,10 @@ export const SyntaxTreeSvg: React.FC<SyntaxTreeSvgProps> = ({
         })}
 
         {Object.values(placed).map(({ node: n, x, y }) => {
+          if (n.id > built) {
+            return null; // not built yet
+          }
+          const onStack = stackIds.includes(n.id);
           const annotated = n.id <= annotatedUpTo;
           const isCurrent = n.id === currentId;
           const isEmph = emphasizeIds.includes(n.id);
@@ -161,7 +177,15 @@ export const SyntaxTreeSvg: React.FC<SyntaxTreeSvgProps> = ({
                 </g>
               )}
 
-              {annotated && (
+              {onStack && (
+                <g>
+                  <rect x={x - 18} y={y - R - 19} width={36} height={13} rx={6.5} fill="#14161F" />
+                  <text x={x} y={y - R - 9.5} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="#8FF3F4">
+                    stack
+                  </text>
+                </g>
+              )}
+              {annotated && !compact && (
                 <>
                   <text x={x - R - 6} y={y + 4} textAnchor="end" fontSize={11} fontWeight={600} fill="#3B6FD8">
                     {fmtSet(n.firstpos)}

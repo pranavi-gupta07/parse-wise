@@ -56,6 +56,9 @@ export interface TreeStep {
   nullableRule: string;
   firstposRule: string;
   lastposRule: string;
+  token: string; // postfix token consumed in this step
+  action: string; // what the builder did with the stack
+  stack: number[]; // node ids (subtree roots) on the build stack after this step
 }
 
 export interface FollowposStep {
@@ -64,9 +67,12 @@ export interface FollowposStep {
   kind: 'cat' | 'star' | 'plus';
   title: string;
   rule: string;
-  sources: number[]; // positions i whose followpos grows
+  ruleIndex: number; // which cat/star/plus node (0-based)
+  ruleCount: number;
+  source: number | null; // the single position i updated in this step (null = lastpos empty)
+  sources: number[]; // all positions i the rule touches
   added: number[]; // the set that is added
-  delta: Record<number, number[]>; // genuinely new entries per position
+  fresh: number[]; // genuinely new entries for followpos(source)
   snapshot: Record<number, number[]>; // followpos after this step
 }
 
@@ -547,7 +553,8 @@ export function buildDfa(parse: ReParseResult): DfaResult | null {
   positions.forEach((p) => (symOf[p.pos] = p.symbol));
   const B = (b: boolean) => (b ? 'true' : 'false');
 
-  // 1. Tree annotation steps (post-order)
+  // 1. Tree construction + annotation steps (post-order = postfix order)
+  const buildStack: number[] = [];
   const treeSteps: TreeStep[] = nodes.map((n, index) => {
     const c1 = n.left;
     const c2 = n.right;
@@ -595,41 +602,81 @@ export function buildDfa(parse: ReParseResult): DfaResult | null {
         lastposRule = `lastpos(c1) = ${fmtSet(n.lastpos)}`;
         break;
     }
-    return { index, nodeId: n.id, title: describeNode(n), nullableRule, firstposRule, lastposRule };
+    // simulate the postfix stack builder
+    const arity = n.type === 'leaf' || n.type === 'eps' ? 0 : n.right ? 2 : 1;
+    const popped = buildStack.splice(buildStack.length - arity, arity);
+    buildStack.push(n.id);
+    const tok = n.type === 'cat' ? '·' : nodeLabel(n);
+    const action =
+      arity === 0
+        ? `Read '${tok}' → create ${n.type === 'leaf' ? `leaf with position ${n.pos}` : 'ε-leaf'} and push it`
+        : arity === 1
+        ? `Read '${tok}' → pop 1 subtree, make it the child of a new ${tok}-node, push it`
+        : `Read '${tok}' → pop 2 subtrees (c1, c2), join them under a new ${tok}-node, push it`;
+    void popped;
+    return {
+      index,
+      nodeId: n.id,
+      title: describeNode(n),
+      nullableRule,
+      firstposRule,
+      lastposRule,
+      token: tok,
+      action,
+      stack: [...buildStack],
+    };
   });
 
   // 2. followpos
   const followpos: Record<number, number[]> = {};
   positions.forEach((p) => (followpos[p.pos] = []));
   const followSteps: FollowposStep[] = [];
-  nodes.forEach((n) => {
-    if (n.type !== 'cat' && n.type !== 'star' && n.type !== 'plus') return;
-    const sources = n.type === 'cat' ? n.left!.lastpos : n.lastpos;
-    const added = n.type === 'cat' ? n.right!.firstpos : n.firstpos;
-    const delta: Record<number, number[]> = {};
+  const ruleNodes = nodes.filter((n) => n.type === 'cat' || n.type === 'star' || n.type === 'plus');
+  const snapshotNow = () => {
+    const snap: Record<number, number[]> = {};
+    Object.keys(followpos).forEach((k) => (snap[+k] = [...followpos[+k]]));
+    return snap;
+  };
+  ruleNodes.forEach((n, ruleIndex) => {
+    const kind = n.type as 'cat' | 'star' | 'plus';
+    const sources = kind === 'cat' ? n.left!.lastpos : n.lastpos;
+    const added = kind === 'cat' ? n.right!.firstpos : n.firstpos;
+    const base = {
+      nodeId: n.id,
+      kind,
+      title: describeNode(n),
+      ruleIndex,
+      ruleCount: ruleNodes.length,
+      sources,
+      added,
+    };
+    if (sources.length === 0) {
+      followSteps.push({
+        ...base,
+        index: followSteps.length,
+        rule: `${kind === 'cat' ? 'lastpos(c1)' : 'lastpos(n)'} is ∅ → this node adds nothing`,
+        source: null,
+        fresh: [],
+        snapshot: snapshotNow(),
+      });
+      return;
+    }
     sources.forEach((i) => {
       const before = followpos[i];
       const after = union(before, added);
       const fresh = after.filter((x) => !before.includes(x));
-      if (fresh.length) delta[i] = fresh;
       followpos[i] = after;
-    });
-    const snapshot: Record<number, number[]> = {};
-    Object.keys(followpos).forEach((k) => (snapshot[+k] = [...followpos[+k]]));
-    const rule =
-      n.type === 'cat'
-        ? `For every i in lastpos(c1) = ${fmtSet(sources)}, add firstpos(c2) = ${fmtSet(added)} to followpos(i)`
-        : `For every i in lastpos(n) = ${fmtSet(sources)}, add firstpos(n) = ${fmtSet(added)} to followpos(i)`;
-    followSteps.push({
-      index: followSteps.length,
-      nodeId: n.id,
-      kind: n.type,
-      title: describeNode(n),
-      rule,
-      sources,
-      added,
-      delta,
-      snapshot,
+      followSteps.push({
+        ...base,
+        index: followSteps.length,
+        rule:
+          kind === 'cat'
+            ? `${i} ∈ lastpos(c1) → followpos(${i}) ∪= firstpos(c2) = ${fmtSet(added)}`
+            : `${i} ∈ lastpos(n) → followpos(${i}) ∪= firstpos(n) = ${fmtSet(added)}`,
+        source: i,
+        fresh,
+        snapshot: snapshotNow(),
+      });
     });
   });
 
