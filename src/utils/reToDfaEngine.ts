@@ -80,6 +80,8 @@ export interface DfaState {
   name: string;
   positions: number[];
   accepting: boolean;
+  /** true only for the explicit trap state, whose position set is empty */
+  dead?: boolean;
 }
 
 export interface DfaStep {
@@ -108,6 +110,8 @@ export interface DfaResult {
   followSteps: FollowposStep[];
   dfaSteps: DfaStep[];
   hasDeadTransitions: boolean;
+  /** name of the explicit trap state, or null when Dtran was already total */
+  deadState: string | null;
 }
 
 export interface SimStep {
@@ -687,6 +691,12 @@ export function buildDfa(parse: ReParseResult): DfaResult | null {
     const round = Math.floor(i / 26);
     return round === 0 ? letter : `${letter}${round}`;
   };
+  // The trap state is named with the empty-set sign and is kept out of the
+  // A, B, C … sequence, so the real states stay contiguously named no matter
+  // at which step the trap state first becomes necessary.
+  let namedCount = 0;
+  const nextName = () => names(namedCount++);
+  const DEAD_NAME = '∅';
   const states: DfaState[] = [];
   const transitions: Record<string, Record<string, string>> = {};
   const marked: string[] = [];
@@ -698,7 +708,7 @@ export function buildDfa(parse: ReParseResult): DfaResult | null {
   });
 
   const startPositions = root!.firstpos;
-  const start: DfaState = { name: names(0), positions: startPositions, accepting: startPositions.includes(endPos) };
+  const start: DfaState = { name: nextName(), positions: startPositions, accepting: startPositions.includes(endPos) };
   states.push(start);
   transitions[start.name] = {};
   dfaSteps.push({
@@ -711,6 +721,20 @@ export function buildDfa(parse: ReParseResult): DfaResult | null {
     explanation: `Start state ${start.name} = firstpos(root) = ${fmtSet(startPositions)}${start.accepting ? ` — contains # (position ${endPos}), so ${start.name} is accepting` : ''}.`,
     ...snap(),
   });
+
+  // A DFA needs a *total* transition function δ : Q × Σ → Q.  An empty position
+  // union is therefore not "no transition" — it is a transition into a trap
+  // state, which is created the first time one is needed.  The trap state holds
+  // no positions, so when the main loop reaches it every symbol of Σ maps back
+  // to itself and the finished automaton is a complete DFA.
+  let deadState: DfaState | null = null;
+  const ensureDead = (): { state: DfaState; created: boolean } => {
+    if (deadState) return { state: deadState, created: false };
+    deadState = { name: DEAD_NAME, positions: [], accepting: false, dead: true };
+    states.push(deadState);
+    transitions[DEAD_NAME] = {};
+    return { state: deadState, created: true };
+  };
 
   let hasDead = false;
   let k = 0;
@@ -726,15 +750,26 @@ export function buildDfa(parse: ReParseResult): DfaResult | null {
       let explanation: string;
       if (U.length === 0) {
         hasDead = true;
-        explanation = contributing.length
-          ? `In ${S.name} = ${fmtSet(S.positions)}, positions ${fmtSet(contributing)} carry '${a}' but their followpos is empty → no transition (dead).`
-          : `In ${S.name} = ${fmtSet(S.positions)}, no position carries '${a}' → Dtran[${S.name}, ${a}] = ∅ (no transition).`;
+        const d = ensureDead();
+        target = d.state;
+        isNew = d.created;
+        transitions[S.name][a] = DEAD_NAME;
+        if (S.dead) {
+          explanation = `${DEAD_NAME} holds no positions, so reading '${a}' cannot leave it → Dtran[${DEAD_NAME}, ${a}] = ${DEAD_NAME} (self-loop).`;
+        } else {
+          const why = contributing.length
+            ? `positions ${fmtSet(contributing)} carry '${a}' but their followpos is empty`
+            : `no position carries '${a}'`;
+          explanation = `In ${S.name} = ${fmtSet(S.positions)}, ${why} → U = ∅.${
+            d.created ? ` Create the non-accepting trap state ${DEAD_NAME}, whose position set is empty, so that δ stays total.` : ''
+          } Dtran[${S.name}, ${a}] = ${DEAD_NAME}.`;
+        }
       } else {
         target = states.find((s) => sameSet(s.positions, U));
         const parts = contributing.map((p) => `followpos(${p})`).join(' ∪ ');
         if (!target) {
           isNew = true;
-          target = { name: names(states.length), positions: U, accepting: U.includes(endPos) };
+          target = { name: nextName(), positions: U, accepting: U.includes(endPos) };
           states.push(target);
           transitions[target.name] = {};
           explanation = `In ${S.name}, '${a}' occurs at ${fmtSet(contributing)}. U = ${parts} = ${fmtSet(U)} is new → create state ${target.name}${target.accepting ? ' (accepting: contains #)' : ''}.`;
@@ -770,6 +805,7 @@ export function buildDfa(parse: ReParseResult): DfaResult | null {
     followSteps,
     dfaSteps,
     hasDeadTransitions: hasDead,
+    deadState: hasDead ? DEAD_NAME : null,
   };
 }
 
@@ -790,9 +826,11 @@ export function simulateDfa(dfa: DfaResult, input: string): { steps: SimStep[]; 
     const next: string | null = cur && dfa.transitions[cur]?.[a] ? dfa.transitions[cur][a] : null;
     const note = !dfa.alphabet.includes(a)
       ? `'${a}' is not in Σ = {${dfa.alphabet.join(', ')}} → reject.`
+      : next && next === dfa.deadState
+      ? `δ(${cur}, ${a}) = ${next} — the trap state; no further symbol can escape it.`
       : next
       ? `δ(${cur}, ${a}) = ${next}`
-      : `δ(${cur}, ${a}) is undefined (dead state) → reject.`;
+      : `δ(${cur}, ${a}) is undefined → reject.`;
     steps.push({
       index: i + 1,
       state: next,

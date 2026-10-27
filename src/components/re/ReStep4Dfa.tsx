@@ -86,6 +86,7 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
       alphabet: dfa.alphabet,
       start: dfa.start,
       accepting: dfa.accepting,
+      deadState: dfa.deadState,
       states: dfa.states,
       transitions: dfa.transitions,
       followpos: dfa.followpos,
@@ -99,6 +100,7 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
   };
 
   const curState = !isAll && active.kind === 'transition' ? shownStates.find((x) => x.name === active.from) : undefined;
+  const isDeadTarget = active.kind === 'transition' && !!dfa.deadState && active.target === dfa.deadState;
 
   const narration = showSim ? (
     simIdx === 0 ? (
@@ -175,7 +177,7 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
               newState={!showSim && active.isNew ? active.target : undefined}
               activeEdge={highlightEdge}
               activeState={showSim ? simStep.state : undefined}
-              deadHighlight={!showSim && active.kind === 'transition' && !active.target}
+              deadHighlight={!showSim && isDeadTarget}
             />
           </div>
         </div>
@@ -191,17 +193,25 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
               {!showSim && active.kind === 'transition' && (
                 <span
                   className={`font-mono text-[10px] uppercase px-2 py-0.5 rounded font-bold ${
-                    !active.target ? 'bg-red-100 text-red-700' : active.isNew ? 'bg-[#ffddb5] text-[#835400]' : 'bg-[#E6F4F4] text-[#006768]'
+                    isDeadTarget ? 'bg-red-100 text-red-700' : active.isNew ? 'bg-[#ffddb5] text-[#835400]' : 'bg-[#E6F4F4] text-[#006768]'
                   }`}
                 >
-                  {!active.target ? 'no transition' : active.isNew ? `new state ${active.target}` : `→ ${active.target}`}
+                  {isDeadTarget
+                    ? active.isNew
+                      ? `new trap state ${active.target}`
+                      : `→ ${active.target} (dead)`
+                    : active.isNew
+                    ? `new state ${active.target}`
+                    : `→ ${active.target}`}
                 </span>
               )}
             </div>
             {showSim ? (
               <p className="text-xs text-gray-700 leading-relaxed">
                 Start <b className="font-mono">{dfa.start}</b> = firstpos(root). Accepting: <b className="font-mono">{dfa.accepting.join(', ') || '—'}</b> (contain
-                position <b className="font-mono">{parse.endPos}</b>, the #).{dfa.hasDeadTransitions && ' Blank Dtran entries go to an implicit dead state.'}
+                position <b className="font-mono">{parse.endPos}</b>, the #).
+                {dfa.deadState &&
+                  ` Every (state, symbol) pair whose position union is empty goes to the trap state ${dfa.deadState}, so δ is a total function — a complete DFA.`}
               </p>
             ) : active.kind === 'start' ? (
               <div className="font-mono text-xs text-gray-700">
@@ -233,7 +243,9 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
                     <b className="text-[#835400] bg-[#ffddb5] px-1 rounded">{fmtSet(active.union)}</b>
                   </div>
                 ) : (
-                  <div className="font-mono text-[11px] text-red-700">no position in {active.from} is labelled '{active.symbol}' → ∅</div>
+                  <div className="font-mono text-[11px] text-red-700">
+                    no position in {active.from} is labelled '{active.symbol}' → U = ∅ → {dfa.deadState ?? '∅'} (trap state)
+                  </div>
                 )}
               </div>
             )}
@@ -267,12 +279,22 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
                       <div
                         key={st.name}
                         className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg border font-mono text-xs ${
-                          isNew ? 'bg-[#ffddb5] border-[#F2A93B]' : isProc ? 'bg-[#E6F4F4] border-[#BFE3E3]' : 'bg-gray-50 border-gray-200'
+                          isNew
+                            ? 'bg-[#ffddb5] border-[#F2A93B]'
+                            : isProc
+                            ? 'bg-[#E6F4F4] border-[#BFE3E3]'
+                            : st.dead
+                            ? 'bg-gray-100 border-dashed border-gray-300'
+                            : 'bg-gray-50 border-gray-200'
                         }`}
                       >
                         <span
-                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold shrink-0 bg-white text-[#006768] ${
-                            st.accepting ? 'border-[3px] border-double border-[#006768]' : 'border-2 border-[#006768]'
+                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold shrink-0 bg-white ${
+                            st.dead
+                              ? 'border-2 border-dashed border-gray-400 text-gray-500'
+                              : st.accepting
+                              ? 'border-[3px] border-double border-[#006768] text-[#006768]'
+                              : 'border-2 border-[#006768] text-[#006768]'
                           }`}
                         >
                           {st.name}
@@ -281,6 +303,7 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
                         <span className="ml-auto flex items-center gap-1.5">
                           {st.name === dfa.start && <span className="px-1.5 rounded bg-[#006768] text-white text-[10px] font-bold">START</span>}
                           {st.accepting && <span className="px-1.5 rounded bg-emerald-100 text-[#006768] text-[10px] font-bold">ACCEPT</span>}
+                          {st.dead && <span className="px-1.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">DEAD</span>}
                           <span className={isMarked ? 'text-[#006768] font-bold' : 'text-gray-400'} title={isProc ? 'processing' : isMarked ? 'marked' : 'unmarked'}>
                             {isProc ? '◐' : isMarked ? '✓' : '○'}
                           </span>
@@ -288,7 +311,10 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
                       </div>
                     );
                   })}
-                  <div className="font-mono text-[10px] text-gray-500 pt-1">✓ marked · ◐ processing · ○ unmarked (waiting)</div>
+                  <div className="font-mono text-[10px] text-gray-500 pt-1">
+                    ✓ marked · ◐ processing · ○ unmarked (waiting)
+                    {dfa.deadState && ` · ${dfa.deadState} = trap state (empty position set, never accepts)`}
+                  </div>
                 </div>
               )}
 
@@ -306,7 +332,16 @@ export const ReStep4Dfa: React.FC<Props> = ({ parse, dfa, startInAll, globalView
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {shownStates.map((st) => (
-                      <tr key={st.name} className={!isAll && !player.isComplete && st.name === active.from ? 'bg-[#E6F4F4]/60' : ''}>
+                      <tr
+                        key={st.name}
+                        className={
+                          !isAll && !player.isComplete && st.name === active.from
+                            ? 'bg-[#E6F4F4]/60'
+                            : st.dead
+                            ? 'bg-gray-50 text-gray-500'
+                            : ''
+                        }
+                      >
                         <td className="py-1.5 px-3 font-bold text-gray-900 whitespace-nowrap">
                           {st.name === dfa.start && <span className="text-[#006768] mr-1">→</span>}
                           {st.name}
