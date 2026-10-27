@@ -37,7 +37,11 @@ export const DfaGraphSvg: React.FC<DfaGraphSvgProps> = ({
   showPositions = true,
 }) => {
   const layout = useMemo(() => {
-    // BFS depth from the start state
+    // BFS depth from the start state.  The trap state is skipped while walking,
+    // because almost every state can fall into it and letting it take a depth
+    // early would drag those edges back across the middle of the graph; it is
+    // given a column of its own on the far right instead.
+    const deadName = layoutStates.find((s) => s.dead)?.name;
     const depth: Record<string, number> = { [start]: 0 };
     const order: string[] = [start];
     for (let i = 0; i < order.length; i++) {
@@ -46,6 +50,7 @@ export const DfaGraphSvg: React.FC<DfaGraphSvgProps> = ({
         .sort()
         .forEach((a) => {
           const t = layoutTransitions[s][a];
+          if (t === deadName) return;
           if (depth[t] === undefined) {
             depth[t] = depth[s] + 1;
             order.push(t);
@@ -53,11 +58,15 @@ export const DfaGraphSvg: React.FC<DfaGraphSvgProps> = ({
         });
     }
     layoutStates.forEach((s) => {
-      if (depth[s.name] === undefined) {
+      if (s.name !== deadName && depth[s.name] === undefined) {
         depth[s.name] = 0;
         order.push(s.name);
       }
     });
+    if (deadName !== undefined && depth[deadName] === undefined) {
+      depth[deadName] = Math.max(0, ...Object.values(depth)) + 1;
+      order.push(deadName);
+    }
     const cols: Record<number, string[]> = {};
     order.forEach((n) => (cols[depth[n]] = [...(cols[depth[n]] || []), n]));
     const maxRows = Math.max(...Object.values(cols).map((c) => c.length));
@@ -223,6 +232,11 @@ export const DfaGraphSvg: React.FC<DfaGraphSvgProps> = ({
           let fill = '#FFFFFF';
           let stroke = '#006768';
           let text = '#004F51';
+          if (s.dead) {
+            fill = '#F4F4F2';
+            stroke = '#9AA0A0';
+            text = '#6D7979';
+          }
           if (isProc) fill = '#E6F4F4';
           if (isNew) {
             fill = '#ffddb5';
@@ -236,12 +250,14 @@ export const DfaGraphSvg: React.FC<DfaGraphSvgProps> = ({
           }
           return (
             <g key={s.name}>
-              <title>{`${s.name} = ${fmtSet(s.positions)}${s.accepting ? ' (accepting)' : ''}`}</title>
+              <title>{`${s.name} = ${fmtSet(s.positions)}${s.accepting ? ' (accepting)' : ''}${
+                s.dead ? ' — trap state: δ is total, but no string can leave it' : ''
+              }`}</title>
               {(isNew || isSim) && <circle cx={p.x} cy={p.y} r={R + 8} fill="none" stroke={isSim ? '#006768' : '#F2A93B'} strokeOpacity={0.35} strokeWidth={5} />}
               {isProc && !isNew && !isSim && (
                 <circle cx={p.x} cy={p.y} r={R + 7} fill="none" stroke="#006768" strokeOpacity={0.45} strokeWidth={2} strokeDasharray="4 3" />
               )}
-              <circle cx={p.x} cy={p.y} r={R} fill={fill} stroke={stroke} strokeWidth={2.2} />
+              <circle cx={p.x} cy={p.y} r={R} fill={fill} stroke={stroke} strokeWidth={2.2} strokeDasharray={s.dead ? '5 3' : undefined} />
               {s.accepting && <circle cx={p.x} cy={p.y} r={R - 5} fill="none" stroke={isSim ? '#FFFFFF' : stroke} strokeWidth={1.6} />}
               <text x={p.x} y={p.y + 6} textAnchor="middle" fontSize={17} fontWeight={800} fill={text}>
                 {s.name}
@@ -282,6 +298,9 @@ export const DfaLegend: React.FC = () => (
     </span>
     <span className="flex items-center gap-1.5">
       <span className="w-5 h-[3px] bg-[#E08E0B] inline-block rounded"></span> current transition
+    </span>
+    <span className="flex items-center gap-1.5">
+      <span className="w-3.5 h-3.5 rounded-full bg-[#F4F4F2] border-2 border-dashed border-[#9AA0A0] inline-block"></span> trap state ∅
     </span>
   </div>
 );
